@@ -174,13 +174,13 @@ if __name__ == '__main__':
         os.chdir('ids')
     except FileNotFoundError:
         os.mkdir('ids')
-    os.chdir('ids')
+        os.chdir('ids')
 
     client = MongoClient('mongodb://localhost:27017')
     db = client['ids']
     cursors = {'movies': db.movies, 'tv_series': db.tv, 'person': db.person, 'collection': db.collection,
                'tv_network': db.tv_network, 'keyword': db.keyword, 'production_company': db.production_company}
-    download_latest_ids()
+    # download_latest_ids()
     update_ids_from_file()
     for changelist in changelists:
         update_ids_from_api(start_date=date(2018, 2, 24), collection=changelist, page=1)
