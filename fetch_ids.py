@@ -96,14 +96,13 @@ def parse_filename(filename):
     return FILE_TYPES[old_filename].lower(), date_from_file
 
 
-def get_missing_records(id_cursor, file):
+def get_missing_records(id_cursor, id_file):
     res = id_cursor.find()
     ids_from_web597 = []
     [ids_from_web597.append(id['id']) for id in res]
 
     ids_from_file = []
-    with open(file, 'r+') as id_file:
-        [ids_from_file.append(json.loads(x)['id']) for x in id_file]
+    [ids_from_file.append(json.loads(x)['id']) for x in id_file]
     # Find the difference between id's in the latest file and the ones in the database
     # TODO: This may be unnecessary if we just query the API and use the incoming 404 error to find out which records to delete
     missing_ids = list(set(ids_from_file).symmetric_difference(ids_from_web597))
@@ -115,7 +114,8 @@ def update_ids_from_file():
     for file in folder_content:
         collection, date_str = parse_filename(file)
         id_cursor = cursors[collection]
-        missing_records = get_missing_records(id_cursor, file)
+        with open(file, 'r+') as id_file:
+            missing_records = get_missing_records(id_cursor, id_file)
 
         # n = int(subprocess.check_output(['cat {0} | wc -l'.format(file)], shell=True))
 
