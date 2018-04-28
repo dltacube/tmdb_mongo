@@ -75,9 +75,8 @@ class TestWriteFomFile(unittest.TestCase):
 
         missing = get_missing_records(self.id_cursor, file)
         missing.sort()
-        
+
         self.assertEqual(missing, unwritten)
-        print(missing)
     # first thing to note about write_to_fomo
     # any id coming through here exists either on the db or in the file but not both
 

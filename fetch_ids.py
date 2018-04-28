@@ -1,75 +1,21 @@
 import datetime
 import json
-import re
 from datetime import date, timedelta
 
 import pymongo
 import requests
 import os
 import logging
+
+from download_idfiles import download_latest_ids, parse_filename
 from helpers import check_rate_limit
 from interface import output_summary
 from pymongo import MongoClient
 
 logging.basicConfig(filename="info.log", level=logging.DEBUG)
 
-ID_TYPES = {
-    'movies': 'movie_ids_MM_DD_YYYY.json.gz',
-    'TV Series': 'tv_series_ids_MM_DD_YYYY.json.gz',
-    'People': 'person_ids_MM_DD_YYYY.json.gz',
-    'Collections': 'collection_ids_MM_DD_YYYY.json.gz',
-    'TV Networks': 'tv_network_ids_MM_DD_YYYY.json.gz',
-    'Keywords': 'keyword_ids_MM_DD_YYYY.json.gz',
-    'Production Companies': 'production_company_ids_MM_DD_YYYY.json.gz'
-}
-FILE_TYPES = {
-    'movie_ids_MM_DD_YYYY.json.gz': 'movies',
-    'tv_series_ids_MM_DD_YYYY.json.gz': 'tv_series',
-    'person_ids_MM_DD_YYYY.json.gz': 'person',
-    'collection_ids_MM_DD_YYYY.json.gz': 'collection',
-    'tv_network_ids_MM_DD_YYYY.json.gz': 'tv_network',
-    'keyword_ids_MM_DD_YYYY.json.gz': 'keyword',
-    'production_company_ids_MM_DD_YYYY.json.gz': 'production_company'
-}
-TODAY = '{:%m_%d_%Y}'.format(date.today())
-YESTERDAY = '{:%m_%d_%Y}'.format(date.today() - timedelta(1))
-BASE_URL = 'http://files.tmdb.org/p/exports/'
 changed_ids = []
 deleted_ids = []
-
-
-def decompress_files():
-    os.system('gunzip *.gz')
-
-
-def write_to_disk(file, url):
-    r = requests.get(url)
-    file.write(r.content)
-
-
-def clear_folder():
-    folder_content = os.listdir()
-    for file in folder_content:
-        os.remove(file)
-
-
-def download_latest_ids():
-    print("downloading latest id's")
-    clear_folder()
-
-    # Download the newest ID files
-    for id in ID_TYPES:
-        filename = ID_TYPES[id].replace('MM_DD_YYYY', YESTERDAY)
-        url = BASE_URL + filename
-
-        try:
-            with open(filename, 'r+b') as file:
-                write_to_disk(file, url)
-        except FileNotFoundError:
-            with open(filename, 'x+b') as file:
-                write_to_disk(file, url)
-
-    decompress_files()
 
 
 def exists_on_fomo(id, id_cursor):
@@ -87,13 +33,6 @@ def write_to_fomo(id: int, id_cursor: pymongo.collection.Collection, source: str
             return id_cursor.update_one({'id': id}, {'$set': {'updated': datetime.datetime.utcnow()}})
     else:
         id_cursor.insert_one({"id": id, "updated": datetime.datetime.utcnow()})
-
-
-def parse_filename(filename):
-    p = re.compile('[\d]{2}_[\d]{2}_[\d]{4}')
-    date_from_file = re.findall(p, filename)[0]
-    old_filename = filename.replace(date_from_file, 'MM_DD_YYYY').replace('.json', '.json.gz')
-    return FILE_TYPES[old_filename].lower(), date_from_file
 
 
 def get_missing_records(id_cursor, id_file):
@@ -125,7 +64,7 @@ def update_ids_from_file():
                 output_summary(n, collection, line)
                 write_to_fomo(int(record_id), id_cursor, 'file')
                 line += 1
-            db.log.insert_one({collection + '_last_update': datetime.datetime.utcnow()})
+            db.log.insert_one({collection + '_last_update': date_str})
         else:
             print('No new records to add.')
 
@@ -170,6 +109,36 @@ def update_ids_from_api(start_date, collection, page=1):
 
 
 if __name__ == '__main__':
+    import argparse
+    import sys
+
+    options = {
+        'movies': 'movies',
+        'tv': 'TV Series',
+        'people': 'People',
+        'collections': 'Collections',
+        'networks': 'TV Networks',
+        'keywords': 'Keywords',
+        'companies': 'Production Companies'
+    }
+
+    parser = argparse.ArgumentParser(description="fetch ids that need to be inserted or updated into a mongodb")
+
+    # parser.add_argument('integers', metavar='N', type=int, nargs='+',
+    #                     help='an integer for the accumulator')
+    #
+    # parser.add_argument('--sum', dest='accumulate', action='store_const',
+    #                     const=sum, default=max,
+    #                     help='sum the integers (default: find the max)')
+
+    parser.add_argument('-c', dest='collections', nargs='*', default=list(options.keys()),
+                        choices=list(options.keys()), metavar='collection',
+                        help="select which collection of ID's should be updated. Default={}".format(list(options.keys())))
+
+    parser.add_argument('-i', dest='host', default='localhost')
+
+    print(parser.parse_args(sys.argv[1:]))
+
     try:
         os.chdir('ids')
     except FileNotFoundError:
@@ -180,7 +149,7 @@ if __name__ == '__main__':
     db = client['ids']
     cursors = {'movies': db.movies, 'tv_series': db.tv, 'person': db.person, 'collection': db.collection,
                'tv_network': db.tv_network, 'keyword': db.keyword, 'production_company': db.production_company}
-    # download_latest_ids()
-    update_ids_from_file()
-    for changelist in changelists:
-        update_ids_from_api(start_date=date(2018, 2, 24), collection=changelist, page=1)
+    download_latest_ids()
+    # update_ids_from_file()
+    # for changelist in changelists:
+    #     update_ids_from_api(start_date=date(2018, 2, 24), collection=changelist, page=1)
